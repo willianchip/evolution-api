@@ -1,0 +1,12 @@
+project_id = "fegvbiomgoodcswveyqn"
+
+# Public authentication endpoints (no JWT required)
+[functions.create-test-user]
+verify_jwt = false
+
+# Public webhook endpoints
+[functions.kiwify-webhook]
+verify_jwt = false
+
+[functions.test-evolution-api]
+verify_jwt = false
