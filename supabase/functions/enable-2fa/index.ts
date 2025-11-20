@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base32Encode } from "https://deno.land/std@0.177.0/encoding/base32.ts";
+import { verifyTOTP } from "../_shared/totp.ts"; // Importando a função de verificação
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,9 +111,18 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      
+      // ⚠️ CORREÇÃO: Verificar o código TOTP
+      const isValid = await verifyTOTP(twoFaData.secret, totpToken, 1);
 
-      // Here we'd normally verify the TOTP token
-      // For now, we'll enable it after the user provides a token
+      if (!isValid) {
+        return new Response(
+          JSON.stringify({ error: 'Código 2FA inválido ou expirado' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      // FIM DA CORREÇÃO
+
       const { error: updateError } = await supabase
         .from('user_2fa')
         .update({ enabled: true })
@@ -125,8 +135,9 @@ serve(async (req) => {
         .from('activity_logs')
         .insert({
           user_id: user.id,
-          action: '2fa_enabled',
-          details: { enabled: true },
+          action_type: '2fa_enabled',
+          description: '2FA habilitado com sucesso',
+          metadata: { enabled: true },
         });
 
       console.log(`[2FA] Enabled for user ${user.id}`);
@@ -150,8 +161,9 @@ serve(async (req) => {
         .from('activity_logs')
         .insert({
           user_id: user.id,
-          action: '2fa_disabled',
-          details: { enabled: false },
+          action_type: '2fa_disabled',
+          description: '2FA desabilitado',
+          metadata: { enabled: false },
         });
 
       console.log(`[2FA] Disabled for user ${user.id}`);
