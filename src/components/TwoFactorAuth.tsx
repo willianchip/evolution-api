@@ -8,16 +8,36 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export const TwoFactorAuth = () => {
-  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [secret, setSecret] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // 1. Query para buscar o status 2FA
+  const { data: twoFaStatus, isLoading: isStatusLoading } = useQuery({
+    queryKey: ['user-2fa-status', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return { enabled: false };
+      const { data, error } = await supabase
+        .from('user_2fa')
+        .select('enabled')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return { enabled: data?.enabled || false };
+    },
+    enabled: !!user?.id,
+  });
+
+  const is2FAEnabled = twoFaStatus?.enabled || false;
 
   const handleEnable2FA = async () => {
     try {
@@ -61,9 +81,9 @@ export const TwoFactorAuth = () => {
 
       if (error) throw error;
 
-      setIs2FAEnabled(true);
       setShowSetup(false);
       setVerificationCode('');
+      queryClient.invalidateQueries({ queryKey: ['user-2fa-status'] }); // Atualiza o status
 
       toast({
         title: '2FA Habilitado!',
@@ -92,7 +112,7 @@ export const TwoFactorAuth = () => {
 
       if (error) throw error;
 
-      setIs2FAEnabled(false);
+      queryClient.invalidateQueries({ queryKey: ['user-2fa-status'] }); // Atualiza o status
 
       toast({
         title: '2FA Desabilitado',
@@ -118,12 +138,14 @@ export const TwoFactorAuth = () => {
           <div>
             <p className="font-medium">Autenticação de Dois Fatores (2FA)</p>
             <p className="text-sm text-muted-foreground">
-              {is2FAEnabled ? 'Ativa' : 'Inativa'}
+              {isStatusLoading ? 'Carregando...' : is2FAEnabled ? 'Ativa' : 'Inativa'}
             </p>
           </div>
         </div>
 
-        {is2FAEnabled ? (
+        {isStatusLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : is2FAEnabled ? (
           <Button
             variant="destructive"
             onClick={handleDisable2FA}
